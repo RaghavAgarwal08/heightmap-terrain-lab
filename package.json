@@ -1,0 +1,13 @@
+{
+  "name": "heightmap-terrain-lab",
+  "version": "1.0.0",
+  "description": "Procedural terrain generator with hand written mesh generation, exact normals, hydraulic erosion and a custom GLSL shader.",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "test": "node tests/math.test.js"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}

@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Heightmap Terrain Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: instrument panel on the left, full bleed WebGL viewport on the right; stacks under the viewport on phones */
+:root{
+  --bg:#0e1311; --panel:#141a18; --raise:#1b2320; --line:#26312c;
+  --fg:#e3e8e2; --muted:#8b998f; --accent:#d8b25a; --accent-ink:#1b1505;
+  --font-body:"Schibsted Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 var(--font-body);display:grid;grid-template-columns:350px minmax(0,1fr);overflow:hidden}
+[hidden]{display:none!important}
+.panel{overflow-y:auto;background:var(--panel);border-right:1px solid var(--line);padding-block:22px 32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:18px;display:flex;flex-direction:column;gap:22px}
+.view{position:relative;min-width:0;min-height:0}
+#gl{display:block;width:100%;height:100%;touch-action:none}
+header h1{font-size:20px;font-weight:700;letter-spacing:-.01em;margin:0 0 6px;text-wrap:balance}
+header p{margin:0;color:var(--muted);font-size:13px;line-height:1.5}
+section{display:flex;flex-direction:column;gap:12px}
+section h2{margin:0;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);display:flex;align-items:center;gap:8px}
+section h2::after{content:"";flex:1;height:1px;background:var(--line)}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:baseline}
+.row label{font-size:13px}
+.row output{font-family:var(--font-mono);font-size:12px;color:var(--accent);font-variant-numeric:tabular-nums}
+.row input[type=range]{grid-column:1/-1;width:100%;margin:2px 0 0;accent-color:var(--accent)}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:var(--raise);border:1px solid var(--line);border-radius:7px;padding:3px;gap:3px}
+.seg.g2{grid-auto-flow:row;grid-template-columns:repeat(2,1fr)}
+.seg.g3{grid-auto-flow:row;grid-template-columns:repeat(3,1fr)}
+.seg button{min-width:0;font:500 12px var(--font-body);color:var(--muted);background:transparent;border:0;border-radius:5px;padding:7px 4px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.seg button:disabled{opacity:.35;cursor:not-allowed}
+.seg button:focus-visible,.btn:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.check{display:flex;align-items:center;gap:9px;font-size:13px;cursor:pointer}
+.check input{accent-color:var(--accent);width:15px;height:15px;margin:0;flex:none}
+.btns{display:flex;gap:8px}
+.btn{font:500 13px var(--font-body);color:var(--fg);background:var(--raise);border:1px solid var(--line);border-radius:7px;padding:9px 12px;cursor:pointer;text-align:left}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);flex:1;text-align:center}
+.btn:disabled{opacity:.6;cursor:progress}
+.btn:not(:disabled):hover{border-color:var(--accent)}
+.track{height:4px;border-radius:2px;background:var(--raise);overflow:hidden}
+.track span{display:block;height:100%;width:0;background:var(--accent);transition:width .15s}
+.sub{font-size:12px;color:var(--muted);line-height:1.5;margin:0}
+.muted{color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{font-weight:500;color:var(--muted);text-align:right;padding:4px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+th:first-child,td:first-child{text-align:left}
+td{padding:5px 0;border-top:1px solid var(--line);text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+td:first-child{font-family:var(--font-body)}
+tr.sel td{color:var(--accent)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin:0}
+.stats div{display:flex;flex-direction:column;gap:2px}
+.stats dt{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.stats dd{margin:0;font-family:var(--font-mono);font-size:13px;font-variant-numeric:tabular-nums}
+.hud{position:absolute;left:max(14px,env(safe-area-inset-left,0px));bottom:14px;right:max(14px,env(safe-area-inset-right,0px));display:flex;flex-wrap:wrap;gap:10px 18px;align-items:flex-end;justify-content:space-between;pointer-events:none}
+.legend{background:rgba(14,19,17,.84);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:min(300px,100%)}
+.legend .bar{height:8px;border-radius:4px}
+.legend .ticks{display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:6px}
+.bar.height{background:linear-gradient(90deg,#0b2236 0%,#4f8f96 15%,#d6c794 17%,#64923f 24%,#2f5a2c 42%,#7a7268 60%,#57504a 72%,#f2f4f8 82%,#f2f4f8 100%)}
+.bar.heat{background:linear-gradient(90deg,#0d144d,#1a9999 33%,#fad640 67%,#d9241a)}
+.hint{font-size:12px;color:var(--muted);background:rgba(14,19,17,.84);border:1px solid var(--line);border-radius:8px;padding:8px 10px;max-width:340px}
+.drop{position:absolute;inset:0;border:2px dashed var(--accent);background:rgba(216,178,90,.08);display:grid;place-items:center;font-weight:500;color:var(--accent)}
+@media (max-width:760px){
+  html,body{height:auto}
+  body{grid-template-columns:minmax(0,1fr);grid-template-rows:58vh auto;overflow:visible}
+  .view{order:1;height:58vh}
+  .panel{order:2;overflow:visible;border-right:0;border-top:1px solid var(--line);padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .hint{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<aside class="panel">
+  <header>
+    <h1>Heightmap Terrain Lab</h1>
+    <p>Heights from warped gradient noise with exact derivatives, optionally carved by hydraulic erosion. The mesh, normals, occlusion and shadows are all computed by hand.</p>
+  </header>
+
+  <section>
+    <h2>Height source</h2>
+    <div class="seg" id="seg-source">
+      <button type="button" data-v="noise" aria-pressed="true">Warped fBm noise</button>
+      <button type="button" data-v="image" aria-pressed="false">Image file</button>
+    </div>
+    <button class="btn" type="button" id="pick">Load grayscale heightmap…</button>
+    <input type="file" id="file" accept="image/*" hidden>
+    <p class="sub" id="src-note">Brighter pixels become higher ground. You can also drop an image onto the viewport.</p>
+  </section>
+
+  <section id="g-noise"><h2>Noise</h2></section>
+
+  <section id="g-erode">
+    <h2>Hydraulic erosion</h2>
+    <div class="btns">
+      <button class="btn primary" type="button" id="erode">Run erosion</button>
+      <button class="btn" type="button" id="reset">Reset</button>
+    </div>
+    <div class="track"><span id="bar"></span></div>
+    <p class="sub" id="erode-note">Droplets carve channels and drop sediment in valleys.</p>
+  </section>
+
+  <section id="g-mesh"><h2>Mesh</h2></section>
+
+  <section>
+    <h2>Normals</h2>
+    <div class="seg g2" id="seg-normals">
+      <button type="button" data-v="analytic" aria-pressed="true">Analytic</button>
+      <button type="button" data-v="central" aria-pressed="false">Central diff</button>
+      <button type="button" data-v="sobel" aria-pressed="false">Sobel 3×3</button>
+      <button type="button" data-v="face" aria-pressed="false">Face weighted</button>
+    </div>
+    <p class="sub" id="normals-note"></p>
+    <table>
+      <thead><tr><th>Method</th><th>Mean</th><th>RMS</th><th>Max</th></tr></thead>
+      <tbody id="err-body"></tbody>
+    </table>
+  </section>
+
+  <section id="g-shade">
+    <h2>Shading</h2>
+    <div class="seg g3" id="seg-mode">
+      <button type="button" data-v="0" aria-pressed="true">Shaded</button>
+      <button type="button" data-v="1" aria-pressed="false">Normals</button>
+      <button type="button" data-v="2" aria-pressed="false">Error</button>
+      <button type="button" data-v="3" aria-pressed="false">Slope</button>
+      <button type="button" data-v="4" aria-pressed="false">AO</button>
+      <button type="button" data-v="5" aria-pressed="false">Light</button>
+    </div>
+  </section>
+
+  <section id="g-light"><h2>Sun</h2></section>
+
+  <section>
+    <h2>Mesh stats</h2>
+    <dl class="stats">
+      <div><dt>Vertices</dt><dd id="s-v">0</dd></div>
+      <div><dt>Triangles</dt><dd id="s-t">0</dd></div>
+      <div><dt>Diagonal flips</dt><dd id="s-flip">0</dd></div>
+      <div><dt>Height field</dt><dd id="s-gen">0 ms</dd></div>
+      <div><dt>Mesh + normals</dt><dd id="s-mesh">0 ms</dd></div>
+      <div><dt>Occlusion</dt><dd id="s-ao">0 ms</dd></div>
+    </dl>
+  </section>
+</aside>
+
+<main class="view" id="view">
+  <canvas id="gl" aria-label="3D terrain viewport"></canvas>
+  <div class="hud">
+    <div class="legend" id="legend-height">
+      <div class="bar height"></div>
+      <div class="ticks"><span>water</span><span>sand</span><span>grass</span><span>forest</span><span>rock</span><span>snow</span></div>
+    </div>
+    <div class="legend" id="legend-err" hidden>
+      <div class="bar heat"></div>
+      <div class="ticks"><span>0°</span><span id="err-label">angle to exact normal</span><span id="err-max">1°</span></div>
+    </div>
+    <div class="legend" id="legend-slope" hidden>
+      <div class="bar heat"></div>
+      <div class="ticks"><span>0°</span><span>slope</span><span>50°</span></div>
+    </div>
+    <div class="hint">Drag to orbit, right drag to pan, scroll to zoom. Drop an image here to use it as the heightmap.</div>
+  </div>
+  <div class="drop" id="drop" hidden>Drop to use as heightmap</div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="src/noise.js"></script>
+<script src="src/erosion.js"></script>
+<script src="src/mesh.js"></script>
+<script src="src/shaders.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>
